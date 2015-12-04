@@ -36,6 +36,9 @@ class UrlTester {
      * @param $url
      */
     private function SetRootUrl($url) {
+        if(substr($url,strlen($url)-1)!='/'){
+            $url.='/';
+        }
         $this->root_url = 'http://'.$url;
     }
 
@@ -50,9 +53,17 @@ class UrlTester {
         foreach ($urls_to_test as $url) {
             $tmp = explode($this->delimiter, $url);
 
-            $tmp[0] = $this->ProcessUrlPart($tmp[0]);
-            $tmp[1] = $this->ProcessUrlPart($tmp[1]);
-
+            $tmp[0] = $this->ProcessUrlPart(trim($tmp[0]));
+            $tmp[1] = $this->ProcessUrlPart(trim($tmp[1]));
+            if(substr($tmp[0], 0, 1)=='/'){
+                $tmp[0] = substr($tmp[0], 1);
+            }
+            if(substr($tmp[1], 0, 1)=='/'){
+                $tmp[1] = substr($tmp[1], 1);
+            }
+            if($tmp[1]=='/'){
+                $tmp[1]='';
+            }
             $this->old_new_urls[] = array('old_url' => $tmp[0], 'new_url' => $tmp[1]);
         }
     }
@@ -93,7 +104,7 @@ class UrlTester {
             if ($test['success']) {
                 $this->results['succeeded'][] = array($url['old_url'].' '.$url['new_url']);
             } else {
-                $this->results['failed'][] = $test;
+                $this->results['failed'][] = array($test['error'], $url['old_url'].' '.$url['new_url'], $test['response']);
             }
 
             $i++;
@@ -111,7 +122,7 @@ class UrlTester {
 
         $ch = curl_init($this->root_url.$old_url);
         curl_setopt($ch, CURLOPT_HEADER, true);
-        curl_setopt($ch, CURLOPT_NOBODY, true);
+        curl_setopt($ch, CURLOPT_NOBODY, false);
         curl_setopt($ch, CURLINFO_EFFECTIVE_URL, true);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 0);
@@ -120,25 +131,26 @@ class UrlTester {
         curl_exec($ch);
         $response = curl_getinfo($ch);
         curl_close($ch);
-
         if ($response['http_code'] == 200) {
-            if ($response['url'] == trim($this->root_url.$new_url)) {
+
+            $response['url'] = $this->removeTrailingSlashIfExists($response['url']);
+            $destUrl = $this->removeTrailingSlashIfExists($this->root_url.$new_url);
+
+            if ($response['url'] == $destUrl) {
                 return array('success' => true);
             } else {
-                return array('success' => false,
-                             'error' => 'This URL does not go to its intended destination',
-                             'entry_url' => $this->root_url.$old_url,
-                             'intended_exit_url' => $this->root_url.$new_url,
-                             'actual_exit_url' => $response['url'],
-                             'dump' => $response);
+                return array('success' => false, 'response' => $response, 'error' => 'This URL does not go to its intended destination ' . $destUrl . ' but arrived at ' . $response['url']);
             }
         } else {
-            return array('success' => false,
-                         'error' => 'This URL 404s',
-                         'entry_url' => $this->root_url.$old_url,
-                         'exit_url' => $response['url'],
-                         'dump' => $response);
+            return array('success' => false, 'response' => $response, 'error' => 'This URL 404s');
         }
+    }
+
+    private function removeTrailingSlashIfExists($url){
+        if(substr($url, strlen($url)-1)=='/'){
+            return trim(substr($url, 0, strlen($url)-1));
+        }
+        return trim($url);
     }
 
     /**
